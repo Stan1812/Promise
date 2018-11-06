@@ -1,30 +1,60 @@
+const State = {
+  pending: '0',
+  resolved: '1',
+  rejected: '2',
+};
 class Promise {
-  constructor() {
+  constructor(executor) {
+    this.state = State.pending;
+    this.value = undefined;
     this.callbacks = [];
-  }
-  reject(res) {
-    this.complete('reject', res);
-  }
-  resolve(res) {
-    this.complete('resolve', res);
-  }
-  complete(type, res) {
-    if (type === 'reject' && this.oncatch) {
-      this.callbacks = [];
-      this.oncatch(res);
-    } else if (this.callbacks[0]) {
-      let handlerObj = this.callbacks.shift();
-      if (handlerObj[type]) {
-        handlerObj[type](res);
-      }
+    if (typeof executor === 'function') {
+      let resolve = value => {
+        this.transition(State.resolved, value);
+      };
+      let reject = value => {
+        this.transition(State.rejected, value);
+      };
+      executor(resolve, reject);
     }
   }
-  then(onSuccess, onFail) {
-    this.callbacks.push({ resolve: onSuccess, reject: onFail });
-    return this;
+  transition(state, value) {
+    if (this.state === State.pending) {
+      this.state = state;
+      this.value = value;
+      this.callbacks.forEach(callback => callback());
+    }
   }
-  catch(onfail) {
-    this.oncatch = onFail;
-    return this;
+  then(onResolved, onRejected) {
+    const self = this;
+    let promise2 = new Promise((resolve, reject) => {
+      let scheduleFn = () => {
+        setTimeout(() => {
+          onResolved = typeof onResolved === 'function' ? onResolved : v => v;
+          onRejected =
+            typeof onRejected === 'function'
+              ? onRejected
+              : v => {
+                  throw v;
+                };
+          try {
+            if (self.state === State.resolved) {
+              resolve(onResolved(self.value));
+            } else {
+              resolve(onRejected(self.value));
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      };
+      if (this.state === State.pending) {
+        this.callbacks.push(scheduleFn);
+      } else {
+        scheduleFn();
+      }
+    });
+    return promise2;
   }
 }
+export { Promise };
